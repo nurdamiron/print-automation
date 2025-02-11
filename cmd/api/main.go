@@ -1,22 +1,26 @@
-// cmd/api/main.go
 package main
 
 import (
     "log"
-    "print-automation/internal/config"
-    "print-automation/internal/server"
+    "net/http"
+    
+    "github.com/nurdamiron/print-automation/internal/config"
+    "github.com/nurdamiron/print-automation/internal/api"
+    "github.com/nurdamiron/print-automation/internal/db"
 )
 
 func main() {
-    // Загрузка конфигурации
     cfg, err := config.Load()
     if err != nil {
-        log.Fatalf("Failed to load config: %v", err)
+        log.Fatal(err)
     }
 
-    // Инициализация и запуск сервера
-    srv := server.NewServer(cfg)
-    if err := srv.Run(); err != nil {
-        log.Fatalf("Failed to run server: %v", err)
+    db, err := db.Connect(cfg.DatabaseURL)
+    if err != nil {
+        log.Fatal(err)
     }
+    defer db.Close()
+
+    server := api.NewServer(cfg, db)
+    log.Fatal(http.ListenAndServe(cfg.ServerAddr, server.Router))
 }
