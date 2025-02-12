@@ -43,3 +43,32 @@ func (r *UserRepository) Create(email, passwordHash string) (*models.User, error
     return user, nil
 }
 
+func (r *UserRepository) GetByEmail(email string) (*models.User, error) {
+    user := &models.User{}
+    query := `
+        SELECT id, email, password_hash, created_at, updated_at
+        FROM users
+        WHERE email = ?
+    `
+    err := r.db.QueryRow(query, email).Scan(
+        &user.ID,
+        &user.Email,
+        &user.PasswordHash,
+        &user.CreatedAt,
+        &user.UpdatedAt,
+    )
+    if err == sql.ErrNoRows {
+        return nil, nil
+    }
+    if err != nil {
+        return nil, err
+    }
+    return user, nil
+}
+
+func (r *UserRepository) ExistsByEmail(email string) (bool, error) {
+    var exists bool
+    query := "SELECT EXISTS(SELECT 1 FROM users WHERE email = ?)"
+    err := r.db.QueryRow(query, email).Scan(&exists)
+    return exists, err
+}
