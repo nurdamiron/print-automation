@@ -4,8 +4,9 @@ package database
 import (
     "database/sql"
     "fmt"
-    _ "github.com/lib/pq"
+    "github.com/sirupsen/logrus"
     "print-automation/internal/config"
+    "time"
 )
 
 type Database struct {
@@ -13,39 +14,50 @@ type Database struct {
 }
 
 func NewDatabase(cfg *config.DatabaseConfig) (*Database, error) {
-    // Формируем строку подключения
-    connStr := fmt.Sprintf(
-        "host=%s port=%s user=%s password=%s dbname=%s sslmode=require",
-        cfg.Host,
-        cfg.Port,
-        cfg.User,
-        cfg.Password,
-        cfg.DBName,
+    logrus.Info("Initializing database connection")
+    
+    dsn := fmt.Sprintf(
+        "host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
+        cfg.Host, cfg.Port, cfg.User, cfg.Password, cfg.DBName, cfg.SSLMode,
     )
 
-    // Открываем соединение
-    db, err := sql.Open("postgres", connStr)
+    db, err := sql.Open("postgres", dsn)
     if err != nil {
+        logrus.WithError(err).Error("Failed to open database connection")
         return nil, fmt.Errorf("error opening database: %w", err)
     }
 
-    // Проверяем соединение
+    // Configure connection pool
+    db.SetMaxOpenConns(25)
+    db.SetMaxIdleConns(25)
+    db.SetConnMaxLifetime(5 * time.Minute)
+
+    // Test connection
     if err := db.Ping(); err != nil {
+        logrus.WithError(err).Error("Failed to ping database")
         return nil, fmt.Errorf("error connecting to the database: %w", err)
     }
 
-    // Настраиваем пул соединений
-    db.SetMaxOpenConns(25)
-    db.SetMaxIdleConns(25)
-
+    logrus.Info("Database connection established successfully")
     return &Database{db}, nil
 }
 
 func (d *Database) Close() error {
+    logrus.Info("Closing database connection")
     return d.DB.Close()
 }
 
-// Пример метода для проверки здоровья БД
+// HealthCheck verifies database connectivity
 func (d *Database) HealthCheck() error {
-    return d.Ping()
+    start := time.Now()
+    err := d.Ping()
+    duration := time.Since(start)
+
+    if err != nil {
+        logrus.WithError(err).Error("Database health check failed")
+        return err
+    }
+
+    logrus.WithField("duration_ms", duration.Milliseconds()).Info("Database health check successful")
+    return nil
 }

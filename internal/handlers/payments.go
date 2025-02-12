@@ -5,6 +5,9 @@ import (
     "encoding/json"
     "net/http"
     "print-automation/internal/service"
+    "github.com/sirupsen/logrus"
+    "github.com/gorilla/mux"
+
 )
 
 type PaymentHandler struct {
@@ -21,6 +24,8 @@ func NewPaymentHandler(paymentService *service.PaymentService) *PaymentHandler {
         paymentService: paymentService,
     }
 }
+
+
 
 func (h *PaymentHandler) ProcessPayment(w http.ResponseWriter, r *http.Request) {
     if r.Method != http.MethodPost {
@@ -43,6 +48,34 @@ func (h *PaymentHandler) ProcessPayment(w http.ResponseWriter, r *http.Request) 
     w.Header().Set("Content-Type", "application/json")
     json.NewEncoder(w).Encode(payment)
 }
+
+func (h *PaymentHandler) PaymentCallback(w http.ResponseWriter, r *http.Request) {
+    logger := logrus.WithField("handler", "payment_callback")
+    
+    vars := mux.Vars(r)
+    paymentID := vars["id"]
+
+    var callbackData struct {
+        Status string `json:"status"`
+        TransactionID string `json:"transaction_id"`
+    }
+
+    if err := json.NewDecoder(r.Body).Decode(&callbackData); err != nil {
+        logger.WithError(err).Error("Failed to decode callback data")
+        http.Error(w, "Invalid request body", http.StatusBadRequest)
+        return
+    }
+
+    err := h.paymentService.ProcessCallback(paymentID, callbackData.Status, callbackData.TransactionID)
+    if err != nil {
+        logger.WithError(err).Error("Failed to process payment callback")
+        http.Error(w, err.Error(), http.StatusInternalServerError)
+        return
+    }
+
+    w.WriteHeader(http.StatusOK)
+}
+
 
 func (h *PaymentHandler) GetPaymentStatus(w http.ResponseWriter, r *http.Request) {
     if r.Method != http.MethodGet {

@@ -4,6 +4,7 @@ package handlers
 import (
     "encoding/json"
     "net/http"
+	"fmt"
     "print-automation/internal/service"
 )
 
@@ -91,6 +92,7 @@ func (h *PrinterHandler) DisconnectPrinter(w http.ResponseWriter, r *http.Reques
 }
 
 // DiscoverPrinters обрабатывает запрос на поиск доступных принтеров
+// DiscoverPrinters обрабатывает запрос на поиск доступных принтеров
 func (h *PrinterHandler) DiscoverPrinters(w http.ResponseWriter, r *http.Request) {
     if r.Method != http.MethodGet {
         http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -99,13 +101,24 @@ func (h *PrinterHandler) DiscoverPrinters(w http.ResponseWriter, r *http.Request
 
     printers, err := h.printerService.DiscoverPrinters()
     if err != nil {
-        http.Error(w, err.Error(), http.StatusInternalServerError)
+        http.Error(w, fmt.Sprintf("Failed to discover printers: %v", err), http.StatusInternalServerError)
         return
     }
 
+    // Передаем корректный тип данных из service
+    response := struct {
+        Message  string               `json:"message"`
+        Printers []service.PrinterInfo `json:"printers"` // ✅ Указываем service.PrinterInfo
+    }{
+        Message:  fmt.Sprintf("Найдено принтеров: %d", len(printers)),
+        Printers: printers,
+    }
+
     w.Header().Set("Content-Type", "application/json")
-    json.NewEncoder(w).Encode(printers)
+    json.NewEncoder(w).Encode(response)
 }
+
+
 
 // PrintDocument обрабатывает запрос на печать документа
 func (h *PrinterHandler) PrintDocument(w http.ResponseWriter, r *http.Request) {

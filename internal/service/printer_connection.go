@@ -6,6 +6,7 @@ import (
     "io"
     "net"
     "sync"
+	"log"
     "time"
     "strings"
 )
@@ -165,7 +166,7 @@ func (pc *PrinterConnection) Print(document io.Reader) error {
 }
 
 
-// Добавляем метод для отмены печати
+
 func (pc *PrinterConnection) CancelPrint() error {
     pc.mu.Lock()
     defer pc.mu.Unlock()
@@ -174,14 +175,25 @@ func (pc *PrinterConnection) CancelPrint() error {
         return fmt.Errorf("printer not connected")
     }
 
+    // PJL команда для отмены текущего задания печати
     cancelCmd := "\x1B%-12345X@PJL CANCEL\r\n"
-    if _, err := pc.conn.Write([]byte(cancelCmd)); err != nil {
+    
+    pc.conn.SetDeadline(time.Now().Add(5 * time.Second))
+    
+    _, err := pc.conn.Write([]byte(cancelCmd))
+    if err != nil {
         return fmt.Errorf("failed to send cancel command: %v", err)
+    }
+
+    // Ждем подтверждения от принтера
+    buffer := make([]byte, 1024)
+    _, err = pc.conn.Read(buffer)
+    if err != nil {
+        return fmt.Errorf("failed to read cancel confirmation: %v", err)
     }
 
     return nil
 }
-
 
 func parseStatusResponse(response string) string {
     response = strings.ToLower(response)
@@ -203,24 +215,27 @@ func parseStatusResponse(response string) string {
 
 func DiscoverPrinters(subnetMask string) ([]PrinterInfo, error) {
     printers := make([]PrinterInfo, 0)
-    
+
     addrs, err := net.InterfaceAddrs()
     if err != nil {
+        log.Printf("Ошибка получения сетевых интерфейсов: %v", err)
         return nil, fmt.Errorf("failed to get network interfaces: %v", err)
     }
 
     for _, addr := range addrs {
         if ipnet, ok := addr.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
             if ipnet.IP.To4() != nil {
+                log.Printf("Сканируем сеть: %s", ipnet.IP.String())
+
                 ports := []int{9100, 515, 631}
-                
                 for _, port := range ports {
                     baseIP := ipnet.IP.To4()
                     for i := 1; i < 255; i++ {
-                        testIP := fmt.Sprintf("%d.%d.%d.%d", 
-                            baseIP[0], baseIP[1], baseIP[2], i)
-                        
+                        testIP := fmt.Sprintf("%d.%d.%d.%d", baseIP[0], baseIP[1], baseIP[2], i)
+                        log.Printf("Проверяем принтер по IP: %s:%d", testIP, port)
+
                         if printer := testPrinterConnection(testIP, port); printer != nil {
+                            log.Printf("Найден принтер: %s", printer.Name)
                             printers = append(printers, *printer)
                         }
                     }
@@ -229,8 +244,13 @@ func DiscoverPrinters(subnetMask string) ([]PrinterInfo, error) {
         }
     }
 
+    if len(printers) == 0 {
+        log.Println("Принтеры не найдены в сети.")
+    }
+
     return printers, nil
 }
+
 
 func testPrinterConnection(ip string, port int) *PrinterInfo {
     address := fmt.Sprintf("%s:%d", ip, port)

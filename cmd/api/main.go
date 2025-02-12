@@ -1,70 +1,70 @@
-// cmd/api/main.go
 package main
 
 import (
     "database/sql"
     "log"
+    "fmt"
+    "print-automation/internal/api"
     "print-automation/internal/config"
-    "print-automation/internal/handlers"  // imports all handlers
     "print-automation/internal/repository"
-    "print-automation/internal/service"   // imports all services
-    "print-automation/internal/server"
-
-    _ "github.com/go-sql-driver/mysql"
+    "print-automation/internal/service"
+    _ "github.com/go-sql-driver/mysql"  // Make sure this import exists
 )
 
 func main() {
     // Загружаем конфигурацию
-    cfg := &config.Config{
-        Server: config.ServerConfig{
-            Host: "localhost",
-            Port: "8080",
-        },
-        Database: config.DatabaseConfig{
-            DSN: "root:print0101@tcp(print.czwiyugwum02.eu-north-1.rds.amazonaws.com:3306)/root",
-        },
+    cfg, err := config.LoadConfig()
+    if err != nil {
+        log.Fatalf("Error loading config: %v", err)
     }
 
-    // Инициализируем подключение к БД
-    db, err := sql.Open("mysql", cfg.Database.DSN)
+    // Формируем DSN для MySQL
+    dsn := fmt.Sprintf("%s:%s@tcp(%s:3306)/%s?parseTime=true",
+        cfg.Database.User,
+        cfg.Database.Password,
+        cfg.Database.Host,
+        cfg.Database.DBName,
+    )
+
+    // Используем драйвер MySQL
+    db, err := sql.Open("mysql", dsn)
     if err != nil {
-        log.Fatalf("Failed to connect to database: %v", err)
+        log.Fatalf("Failed to create database connection: %v", err)
     }
     defer db.Close()
 
-    // Настраиваем пул соединений
-    db.SetMaxOpenConns(25)
-    db.SetMaxIdleConns(25)
+    // Устанавливаем таймаут подключения
+    db.SetConnMaxLifetime(0)
+    db.SetMaxIdleConns(50)
+    db.SetMaxOpenConns(50)
 
-    // Проверяем подключение
+    // Проверяем соединение
     if err := db.Ping(); err != nil {
         log.Fatalf("Cannot connect to database: %v", err)
     }
-    log.Println("Connected to database successfully")
+    log.Println("✅ Connected to database successfully")
 
-    // Инициализируем репозитории
+    // Остальной код остается тем же
     userRepo := repository.NewUserRepository(db)
     printJobRepo := repository.NewPrintJobRepository(db)
     paymentRepo := repository.NewPaymentRepository(db)
 
-    // Инициализируем сервисы
     printerService := service.NewPrinterService()
+    printJobService := service.NewPrintJobService(printJobRepo, printerService, nil, nil)
     paymentService := service.NewPaymentService(paymentRepo, printJobRepo, true)
+    authService := service.NewAuthService(userRepo, cfg.JWTSecret)
 
-    // Инициализируем обработчики
-    handlers := &server.Handlers{
-        UserHandler:     handlers.NewUserHandler(userRepo),
-        PrintJobHandler: handlers.NewPrintJobHandler(printJobRepo),
-        PaymentHandler:  handlers.NewPaymentHandler(paymentService),
-        PrinterHandler:  handlers.NewPrinterHandler(printerService),
-    }
+    server := api.NewServer(
+        cfg,
+        printerService,
+        paymentService,
+        authService,
+        printJobService,
+    )
 
-    // Создаем и настраиваем сервер
-    srv := server.NewServer(cfg, handlers)
+    log.Printf("🚀 Starting server on %s:%s", cfg.Server.Host, cfg.Server.Port)
 
-    // Запускаем сервер
-    log.Printf("Starting server on %s:%s", cfg.Server.Host, cfg.Server.Port)
-    if err := srv.Run(); err != nil {
-        log.Fatalf("Server failed to start: %v", err)
+    if err := server.Run(); err != nil {
+        log.Fatalf("❌ Server failed to start: %v", err)
     }
 }
