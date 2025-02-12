@@ -5,7 +5,6 @@ import (
     "context"
     "net/http"
     "strings"
-    "time"
     "github.com/golang-jwt/jwt/v4"
 )
 

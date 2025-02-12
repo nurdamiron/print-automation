@@ -2,51 +2,69 @@
 package main
 
 import (
-	"database/sql"
-	"log"
-	"net/http"
-	"print-automation/internal/handlers"
-	"print-automation/internal/repository"
-	"print-automation/internal/service"
+    "database/sql"
+    "log"
+    "print-automation/internal/config"
+    "print-automation/internal/handlers"  // imports all handlers
+    "print-automation/internal/repository"
+    "print-automation/internal/service"   // imports all services
+    "print-automation/internal/server"
 
-	_ "github.com/go-sql-driver/mysql"
+    _ "github.com/go-sql-driver/mysql"
 )
 
 func main() {
-	// Подключение к БД с правильными учетными данными
-	db, err := sql.Open("mysql", "root:print0101@tcp(print.czwiyugwum02.eu-north-1.rds.amazonaws.com:3306)/root")
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer db.Close()
+    // Загружаем конфигурацию
+    cfg := &config.Config{
+        Server: config.ServerConfig{
+            Host: "localhost",
+            Port: "8080",
+        },
+        Database: config.DatabaseConfig{
+            DSN: "root:print0101@tcp(print.czwiyugwum02.eu-north-1.rds.amazonaws.com:3306)/root",
+        },
+    }
 
-	// Проверка подключения к БД
-	if err := db.Ping(); err != nil {
-		log.Fatal("Cannot connect to database:", err)
-	}
-	log.Println("Connected to database successfully")
+    // Инициализируем подключение к БД
+    db, err := sql.Open("mysql", cfg.Database.DSN)
+    if err != nil {
+        log.Fatalf("Failed to connect to database: %v", err)
+    }
+    defer db.Close()
 
-	// Инициализация репозиториев
-	userRepo := repository.NewUserRepository(db)
-	printJobRepo := repository.NewPrintJobRepository(db)
-	paymentRepo := repository.NewPaymentRepository(db)
+    // Настраиваем пул соединений
+    db.SetMaxOpenConns(25)
+    db.SetMaxIdleConns(25)
 
-	// Инициализация сервисов
-	paymentService := service.NewPaymentService(paymentRepo, printJobRepo, true)
+    // Проверяем подключение
+    if err := db.Ping(); err != nil {
+        log.Fatalf("Cannot connect to database: %v", err)
+    }
+    log.Println("Connected to database successfully")
 
-	// Инициализация обработчиков
-	userHandler := handlers.NewUserHandler(userRepo)
-	printJobHandler := handlers.NewPrintJobHandler(printJobRepo)
-	paymentHandler := handlers.NewPaymentHandler(paymentService)
+    // Инициализируем репозитории
+    userRepo := repository.NewUserRepository(db)
+    printJobRepo := repository.NewPrintJobRepository(db)
+    paymentRepo := repository.NewPaymentRepository(db)
 
-	// Маршрутизация
-	mux := http.NewServeMux()
-	mux.HandleFunc("/api/users", userHandler.Create)
-	mux.HandleFunc("/api/print-jobs", printJobHandler.Create)
-	mux.HandleFunc("/api/payments", paymentHandler.ProcessPayment)
-	mux.HandleFunc("/api/payments/status", paymentHandler.GetPaymentStatus)
+    // Инициализируем сервисы
+    printerService := service.NewPrinterService()
+    paymentService := service.NewPaymentService(paymentRepo, printJobRepo, true)
 
-	// Запуск сервера
-	log.Println("Starting server on :8080")
-	log.Fatal(http.ListenAndServe(":8080", mux))
+    // Инициализируем обработчики
+    handlers := &server.Handlers{
+        UserHandler:     handlers.NewUserHandler(userRepo),
+        PrintJobHandler: handlers.NewPrintJobHandler(printJobRepo),
+        PaymentHandler:  handlers.NewPaymentHandler(paymentService),
+        PrinterHandler:  handlers.NewPrinterHandler(printerService),
+    }
+
+    // Создаем и настраиваем сервер
+    srv := server.NewServer(cfg, handlers)
+
+    // Запускаем сервер
+    log.Printf("Starting server on %s:%s", cfg.Server.Host, cfg.Server.Port)
+    if err := srv.Run(); err != nil {
+        log.Fatalf("Server failed to start: %v", err)
+    }
 }

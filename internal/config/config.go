@@ -2,20 +2,28 @@
 package config
 
 type Config struct {
-    DatabaseURL string
-    ServerAddr  string
-    JWTSecret   string
-    S3Bucket    string
-    // Payment gateway configs
-    PaymentGatewayURL  string
-    PaymentGatewayKey  string
+    Server   ServerConfig
+    Database DatabaseConfig
 }
 
-func Load() (*Config, error) {
-    // Load configuration from environment variables
-    // or configuration file
-    return &Config{ 
-        DatabaseURL: "mysql://root:print0101@print.czwiyugwum02.eu-north-1.rds.amazonaws.com/root", 
-        ServerAddr:  ":3306",
+type ServerConfig struct {
+    Host string
+    Port string
+}
+
+type DatabaseConfig struct {
+    DSN string
+}
+
+func LoadConfig() (*Config, error) {
+    // В будущем здесь можно добавить загрузку из env файла
+    return &Config{
+        Server: ServerConfig{
+            Host: "localhost",
+            Port: "8080",
+        },
+        Database: DatabaseConfig{
+            DSN: "root:print0101@tcp(print.czwiyugwum02.eu-north-1.rds.amazonaws.com:3306)/root",
+        },
     }, nil
 }
