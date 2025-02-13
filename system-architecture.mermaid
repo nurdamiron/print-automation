@@ -1,0 +1,36 @@
+flowchart TB
+    subgraph Frontend[Frontend Layer]
+        UI[User Interface]
+    end
+
+    subgraph API[API Layer]
+        Router[Gorilla Mux Router]
+        Auth[Auth Middleware]
+        Handlers[Request Handlers]
+    end
+
+    subgraph Services[Service Layer]
+        PS[Printer Service]
+        PJS[Print Job Service]
+        AS[Auth Service]
+        PYS[Payment Service]
+    end
+
+    subgraph DataLayer[Data Layer]
+        DB[(MySQL Database)]
+        Repos[Repositories]
+    end
+
+    subgraph PrinterProtocols[Printer Communication]
+        Raw[Raw Protocol]
+        IPP[IPP Protocol]
+        LPD[LPD Protocol]
+    end
+
+    UI --> Router
+    Router --> Auth
+    Auth --> Handlers
+    Handlers --> Services
+    Services --> Repos
+    Repos --> DB
+    PS --> PrinterProtocols

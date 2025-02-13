@@ -25,17 +25,28 @@ func AuthMiddleware(jwtSecret string) func(http.Handler) http.Handler {
                 "method": r.Method,
             })
 
-            // Skip auth for public endpoints
-            if r.URL.Path == "/api/v1/auth/login" || r.URL.Path == "/api/v1/auth/register" {
-                logger.Debug("Skipping auth for public endpoint")
-                next.ServeHTTP(w, r)
-                return
+            // List of public endpoints that don't require authentication
+            publicEndpoints := []string{
+                "/api/v1/auth/login",
+                "/api/v1/auth/register",
+                "/api/v1/printers/discover",
+                "/api/v1/printers/status",
+                "/api/v1/printers/connect",
             }
 
+            // Check if the current path is in the public endpoints list
+            for _, endpoint := range publicEndpoints {
+                if strings.HasPrefix(r.URL.Path, endpoint) {
+                    next.ServeHTTP(w, r)
+                    return
+                }
+            }
+
+            // For all other endpoints, check for authentication
             authHeader := r.Header.Get("Authorization")
             if authHeader == "" {
-                logger.Warn("Missing authorization header")
-                http.Error(w, "Authorization header required", http.StatusUnauthorized)
+                // Instead of returning 401, we'll allow the request but without user context
+                next.ServeHTTP(w, r)
                 return
             }
 
@@ -55,14 +66,12 @@ func AuthMiddleware(jwtSecret string) func(http.Handler) http.Handler {
             })
 
             if err != nil || !token.Valid {
-                logger.WithError(err).Warn("Invalid token")
-                http.Error(w, "Invalid token", http.StatusUnauthorized)
+                // If token is invalid, continue without user context
+                next.ServeHTTP(w, r)
                 return
             }
 
-            logger = logger.WithField("user_id", claims.UserID)
-            logger.Debug("User authenticated successfully")
-
+            // If token is valid, add user context
             ctx := context.WithValue(r.Context(), "user_id", claims.UserID)
             ctx = context.WithValue(ctx, "email", claims.Email)
             

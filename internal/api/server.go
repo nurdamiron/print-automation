@@ -46,28 +46,27 @@ func NewServer(cfg *config.Config,
 }
 
 func (s *Server) routes() {
-    // Auth routes
-    s.Router.HandleFunc("/api/v1/auth/login", s.authHandler.Login).Methods("POST")
-    s.Router.HandleFunc("/api/v1/auth/register", s.authHandler.Register).Methods("POST")
+    // Apply CORS middleware to all routes
+    s.Router.Use(middleware.CORSMiddleware())
 
+    // Auth routes
+    s.Router.HandleFunc("/api/v1/auth/login", s.authHandler.Login).Methods("POST", "OPTIONS")
+    s.Router.HandleFunc("/api/v1/auth/register", s.authHandler.Register).Methods("POST", "OPTIONS")
+    
     // Protected routes
     api := s.Router.PathPrefix("/api/v1").Subrouter()
     api.Use(middleware.AuthMiddleware(s.config.JWTSecret))
-
-    // Print Jobs
-    api.HandleFunc("/print-jobs", s.printJobHandler.Create).Methods("POST")
-    api.HandleFunc("/print-jobs/{id}", s.printJobHandler.Get).Methods("GET")
-    api.HandleFunc("/print-jobs/{id}/status", s.printJobHandler.GetStatus).Methods("GET")
     
-    // Payments
-    api.HandleFunc("/payments", s.paymentHandler.ProcessPayment).Methods("POST")
-    api.HandleFunc("/payments/{id}/callback", s.paymentHandler.PaymentCallback).Methods("POST")
+    // Print Jobs
+    api.HandleFunc("/print-jobs", s.printJobHandler.Create).Methods("POST", "OPTIONS")
+    api.HandleFunc("/print-jobs/{id}", s.printJobHandler.Get).Methods("GET", "OPTIONS")
+    api.HandleFunc("/print-jobs/{id}/status", s.printJobHandler.GetStatus).Methods("GET", "OPTIONS")
     
     // Printers
-    api.HandleFunc("/printers", s.printerHandler.DiscoverPrinters).Methods("GET")
-    api.HandleFunc("/printers/{id}/status", s.printerHandler.GetPrinterStatus).Methods("GET")
-    api.HandleFunc("/printers/{id}", s.printerHandler.ConnectPrinter).Methods("POST")
-    api.HandleFunc("/printers/{id}", s.printerHandler.DisconnectPrinter).Methods("DELETE")
+    api.HandleFunc("/printers", s.printerHandler.DiscoverPrinters).Methods("GET", "OPTIONS")
+    api.HandleFunc("/printers/{id}/status", s.printerHandler.GetPrinterStatus).Methods("GET", "OPTIONS")
+    api.HandleFunc("/printers/{id}", s.printerHandler.ConnectPrinter).Methods("POST", "OPTIONS")
+    api.HandleFunc("/printers/{id}", s.printerHandler.DisconnectPrinter).Methods("DELETE", "OPTIONS")
 }
 
 func (s *Server) Run() error {
