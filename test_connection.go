@@ -1,26 +1,49 @@
 package main
 
 import (
-    "database/sql"
     "fmt"
-    _ "github.com/lib/pq"
+    "log"
+    "net"
+    "os"
+    "strconv"
+    "time"
+
+    "github.com/joho/godotenv"
 )
 
 func main() {
-    connStr := "postgresql://postgres:printer0101@db.npoagmbfmexqcelbnsng.supabase.co:5432/postgres"
-    
-    db, err := sql.Open("postgres", connStr)
+    // Загружаем .env
+    err := godotenv.Load(".env")
     if err != nil {
-        fmt.Printf("Error opening database: %v\n", err)
-        return
-    }
-    defer db.Close()
-
-    err = db.Ping()
-    if err != nil {
-        fmt.Printf("Error connecting to the database: %v\n", err)
-        return
+        log.Fatalf("Ошибка загрузки .env: %v", err)
     }
 
-    fmt.Println("Successfully connected to database!")
+    // Читаем из окружения IP и порт
+    printerIP := os.Getenv("PRINTER_IP")
+    printerPortStr := os.Getenv("PRINTER_PORT")
+
+    if printerIP == "" {
+        log.Fatal("Не задана переменная окружения PRINTER_IP")
+    }
+    if printerPortStr == "" {
+        log.Fatal("Не задана переменная окружения PRINTER_PORT")
+    }
+
+    printerPort, err := strconv.Atoi(printerPortStr)
+    if err != nil {
+        log.Fatalf("Некорректное значение PRINTER_PORT: %v", err)
+    }
+
+    // Формируем адрес вида "192.168.1.50:9100"
+    addr := fmt.Sprintf("%s:%d", printerIP, printerPort)
+
+    // Пытаемся подключиться к принтеру
+    conn, err := net.DialTimeout("tcp", addr, 3*time.Second)
+    if err != nil {
+        fmt.Println("Принтер недоступен:", err)
+        return
+    }
+    defer conn.Close()
+
+    fmt.Println("Успешное соединение с принтером на", addr)
 }
